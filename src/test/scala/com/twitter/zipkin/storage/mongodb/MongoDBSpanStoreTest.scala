@@ -3,11 +3,7 @@ package com.twitter.zipkin.storage.mongodb
 import java.nio.ByteBuffer
 
 import com.mongodb.casbah.Imports._
-import com.twitter.app.App
-import com.twitter.util.TimeConversions._
-import com.twitter.zipkin.mongodb.MongoDBSpanStoreFactory
-import com.twitter.zipkin.storage.util.SpanStoreValidator
-import com.twitter.zipkin.storage.{IndexedTraceId, SpanStore}
+import com.twitter.zipkin.storage.{SpanStoreSpec, IndexedTraceId}
 import org.scalatest.FunSuite
 
 class MongoDBSpanStoreTest extends FunSuite {
@@ -42,36 +38,5 @@ class MongoDBSpanStoreTest extends FunSuite {
       override def startTimeStampFromMongoObject(obj: MongoDBObject): Long = 666
     }
     assert(mockUtils.dbObjectToIndexedTraceId(MongoDBObject("traceId" -> 123L)) == IndexedTraceId(123, 666))
-  }
-
-  test("validate") {
-    object MongoDBStore extends App with MongoDBSpanStoreFactory
-
-    MongoDBStore.main(Array("-zipkin.storage.mongodb.database", "zipkin-test"))
-
-    var currentSpanStore: Option[SpanStore] = None
-
-    val client = MongoClient()
-    val db = client("zipkin-test")
-
-    try {
-      new SpanStoreValidator({
-        currentSpanStore match {
-          case None => ()
-          case Some(store) => store.close(5.seconds) // Close the old store before opening a new one
-        }
-        db.dropDatabase()
-        currentSpanStore = Some(MongoDBStore.newMongoDBSpanStore())
-        currentSpanStore.get
-      }, true).validate
-    } finally {
-      currentSpanStore match {
-        case None => ()
-        case Some(store) => store.close(5.seconds)
-      }
-      currentSpanStore = None
-      db.dropDatabase()
-      client.close()
-    }
   }
 }

@@ -375,8 +375,5 @@ class MongoDBSpanStore(url: String, database: String, spanTTL: Duration) extends
       .toList) //Eagerly evaluate the map, so that all futures are immediately added to the thread pool queue, despite the
   //            implementation of Future.join
 
-  override def close(deadline: Time): Future[Unit] = makeAsync.close(deadline).onSuccess(
-    (_: Unit) => {
-      client.close()
-    })
+  override def close() = client.close()
 }
