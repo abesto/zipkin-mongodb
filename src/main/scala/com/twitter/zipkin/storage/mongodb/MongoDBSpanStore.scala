@@ -11,7 +11,7 @@ import com.twitter.util._
 import com.twitter.zipkin.common._
 import com.twitter.zipkin.Constants
 import com.twitter.zipkin.storage.mongodb.utils.{EnsureIndexes, Index}
-import com.twitter.zipkin.storage.{IndexedTraceId, SpanStore, TraceIdDuration}
+import com.twitter.zipkin.storage.{IndexedTraceId, SpanStore}
 
 private object RegisterMongoDBSerializers {
 
@@ -20,7 +20,7 @@ private object RegisterMongoDBSerializers {
   def apply(): Unit = registerSerializers
 }
 
-private class Asyncifier extends Closable{
+private class Asyncifier extends Closable {
 
   private[this] val pool = new ForkJoinPool()
   private[this] val closed = new AtomicBoolean(false)
@@ -102,20 +102,6 @@ class MongoDBSpanStore(url: String, database: String, spanTTL: Duration) extends
   )
   EnsureIndexes(servicesIndex)(Index.ExpiresAt("expiresAt"), Index.Unique("serviceName"))
 
-  override def getTimeToLive(traceId: Long): Future[Duration] = makeAsync {
-    Time(traces.findOne(MongoDBObject("traceId" -> traceId)).get.apply("expiresAt").asInstanceOf[Date]).sinceNow
-  }
-
-  // Used for pinning
-  override def setTimeToLive(traceId: Long, ttl: Duration): Future[Unit] = makeAsync {
-    traces.update(
-      MongoDBObject("traceId" -> traceId), MongoDBObject(
-        "$set" -> MongoDBObject(
-          "expiresAt" -> ttl.fromNow.toDate
-        )
-      ))
-  }
-
   /**
    * Get the trace ids for this particular service and if provided, span name.
    * Only return maximum of limit trace ids from before the endTs.
@@ -194,8 +180,6 @@ class MongoDBSpanStore(url: String, database: String, spanTTL: Duration) extends
     }
   }
 
-  override def getSpansByTraceId(traceId: Long): Future[Seq[Span]] = optionalGetSpansByTraceId(traceId).map(_.get)
-
   /**
    * Get the trace ids for this annotation between the two timestamps. If value is also passed we expect
    * both the annotation key and value to be present in index for a match to be returned.
@@ -241,17 +225,6 @@ class MongoDBSpanStore(url: String, database: String, spanTTL: Duration) extends
       traces.find(MongoDBObject(queryParts.flatten)).limit(limit).map(dbObjectToIndexedTraceId(_)).toSeq
     }
 
-  override def tracesExist(traceIds: Seq[Long]): Future[Set[Long]] =
-    Future.collect(
-      traceIds.map(
-        (traceId) =>
-          makeAsync(if (traces.count(MongoDBObject("traceId" -> traceId), limit = 1) == 0) None else Some(traceId))
-      )).map {
-      maybeTraceIds =>
-        val foundTraceIds = maybeTraceIds.collect { case Some(id) => id }
-        foundTraceIds.toSet
-    }
-
   /**
    * Get the available trace information from the storage system.
    * Spans in trace should be sorted by the first annotation timestamp
@@ -272,25 +245,6 @@ class MongoDBSpanStore(url: String, database: String, spanTTL: Duration) extends
     servicesIndex.findOne(MongoDBObject("serviceName" -> service.toLowerCase)).map(new MongoDBObject(_))
       .map(_.as[MongoDBList]("methods").map(_.asInstanceOf[String]).toSet).getOrElse(Set())
   }
-
-  /**
-   * Fetch the duration or an estimate thereof from the traces.
-   * Duration returned in micro seconds.
-   */
-  override def getTracesDuration(traceIds: Seq[Long]): Future[Seq[TraceIdDuration]] =
-    Future.collect(
-      traceIds.map(
-        (traceId) =>
-          makeAsync {
-            val trace = new MongoDBObject(traces.findOne(MongoDBObject("traceId" -> traceId)).get)
-            val timestamp = startTimeStampFromMongoObject(trace)
-            TraceIdDuration(
-              traceId = traceId,
-              duration = endTimeStampFromMongoObject(trace) - timestamp,
-              startTimestamp = timestamp
-            )
-          }
-      ).toSeq)
 
   /**
    * Get all the service names for as far back as the ttl allows.
