@@ -165,7 +165,6 @@ class MongoDBSpanStore(url: String, database: String, spanTTL: Duration) extends
                 (obj) => Annotation(
                   timestamp = obj.as[Long]("timestamp"),
                   value = obj.as[String]("value"),
-                  duration = obj.getAs[Long]("durationInNanoseconds").map(Duration.fromNanoseconds(_)),
                   host = getHostOption(obj)
                 )).toList,
               binaryAnnotations.filter(_.as[Long]("span") == spanId).map(
@@ -281,11 +280,10 @@ class MongoDBSpanStore(url: String, database: String, spanTTL: Duration) extends
                 ),
                 "$pushAll" -> MongoDBObject(
                   "annotations" -> span.annotations.map {
-                    case Annotation(timestamp, value, host, duration) => MongoDBObject(
+                    case Annotation(timestamp, value, host) => MongoDBObject(
                       "span" -> span.id,
                       "timestamp" -> timestamp,
                       "value" -> value,
-                      "durationInNanoseconds" -> duration.map(_.inNanoseconds),
                       "host" -> host.map(hostToMongoObject)
                     )
                   },
