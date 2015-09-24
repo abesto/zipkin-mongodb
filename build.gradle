@@ -20,7 +20,7 @@ repositories {
 ext {
     scalaVersion = '2.11.7'
     scalaInterfaceVersion = '2.11'
-    zipkinVersion = '1.9.0'
+    zipkinVersion = '1.10.0'
 }
 
 dependencies {
@@ -31,4 +31,5 @@ dependencies {
 
     testCompile "io.zipkin:zipkin-common:${zipkinVersion}:test"
     testCompile "org.scalatest:scalatest_${scalaInterfaceVersion}:2.2.5"
+    testRuntime "org.slf4j:slf4j-simple:1.7.2"
 }
