@@ -11,7 +11,7 @@ import com.twitter.util._
 import com.twitter.zipkin.common._
 import com.twitter.zipkin.Constants
 import com.twitter.zipkin.storage.mongodb.utils.{EnsureIndexes, Index}
-import com.twitter.zipkin.storage.{IndexedTraceId, SpanStore}
+import com.twitter.zipkin.storage.{CollectAnnotationQueries, IndexedTraceId, SpanStore}
 
 private object RegisterMongoDBSerializers {
 
@@ -80,7 +80,7 @@ private[mongodb] trait MongoDBSpanStoreUtils {
   }
 }
 
-class MongoDBSpanStore(url: String, database: String, spanTTL: Duration) extends SpanStore with MongoDBSpanStoreUtils {
+class MongoDBSpanStore(url: String, database: String, spanTTL: Duration) extends SpanStore with CollectAnnotationQueries with MongoDBSpanStoreUtils {
 
   RegisterMongoDBSerializers()
   private[this] val makeAsync = new Asyncifier
@@ -232,7 +232,7 @@ class MongoDBSpanStore(url: String, database: String, spanTTL: Duration) extends
    * The return list will contain only spans that have been found, thus
    * the return list may not match the provided list of ids.
    */
-  override def getSpansByTraceIds(traceIds: Seq[Long]): Future[Seq[Seq[Span]]] =
+  override def getTracesByIds(traceIds: Seq[Long]): Future[Seq[Seq[Span]]] =
     Future
       .collect(traceIds.map(optionalGetSpansByTraceId(_)))
       .map(_ /*Option[Seq[Span]]*/ .filter(_.nonEmpty).map(_.get))
@@ -240,16 +240,16 @@ class MongoDBSpanStore(url: String, database: String, spanTTL: Duration) extends
   /**
    * Get all the span names for a particular service, as far back as the ttl allows.
    */
-  override def getSpanNames(service: String): Future[Set[String]] = makeAsync {
+  override def getSpanNames(service: String): Future[List[String]] = makeAsync {
     servicesIndex.findOne(MongoDBObject("serviceName" -> service.toLowerCase)).map(new MongoDBObject(_))
-      .map(_.as[MongoDBList]("methods").map(_.asInstanceOf[String]).toSet).getOrElse(Set())
+      .map(_.as[MongoDBList]("methods").map(_.asInstanceOf[String]).toList.sorted).getOrElse(List.empty)
   }
 
   /**
    * Get all the service names for as far back as the ttl allows.
    */
-  override def getAllServiceNames: Future[Set[String]] = makeAsync {
-    servicesIndex.find().map(new MongoDBObject(_)).map(_.as[String]("serviceName")).toSet
+  override def getAllServiceNames: Future[List[String]] = makeAsync {
+    servicesIndex.find().map(new MongoDBObject(_)).map(_.as[String]("serviceName")).toList.sorted
   }
 
   // store a list of spans
