@@ -20,7 +20,7 @@ repositories {
 ext {
     scalaVersion = '2.11.7'
     scalaInterfaceVersion = '2.11'
-    zipkinVersion = '1.16.0'
+    zipkinVersion = '1.17.1'
 }
 
 dependencies {
